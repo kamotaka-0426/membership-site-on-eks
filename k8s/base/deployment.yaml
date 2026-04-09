@@ -50,6 +50,13 @@ spec:
                 secretKeyRef:
                   name: membership-blog-app-secrets
                   key: jwt_secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
           livenessProbe:
             httpGet:
               path: /health

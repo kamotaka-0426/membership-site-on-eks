@@ -128,10 +128,24 @@ module "acm_ingress" {
   route53_zone_id = local.route53_zone_id
 }
 
+# Resolve the ALB hostname created by Argo CD syncing the Ingress manifest.
+# BOOTSTRAPPING NOTE: This data source requires the Ingress (and its ALB) to already
+# exist. On a fresh deployment, run terraform apply in two passes:
+#   1st pass: target EKS, Argo CD, and the ArgoCD Application; wait for ALB to appear.
+#   2nd pass: run terraform apply without -target to create CloudFront with the resolved hostname.
+data "kubernetes_ingress_v1" "api" {
+  metadata {
+    name      = "membership-blog-ingress"
+    namespace = kubernetes_namespace_v1.dev.metadata[0].name
+  }
+
+  depends_on = [kubernetes_manifest.argocd_app]
+}
+
 module "cloudfront" {
   source               = "../../modules/cloudfront"
   origin_verify_secret = random_uuid.origin_verify_secret.result
-  origin_domain_name   = "k8s-dev-membersh-7bdcd6eb81-2055686610.ap-northeast-1.elb.amazonaws.com"
+  origin_domain_name   = data.kubernetes_ingress_v1.api.status[0].load_balancer[0].ingress[0].hostname
   domain_name          = "api.${local.domain_name}"
   route53_zone_id      = local.route53_zone_id
 
