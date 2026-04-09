@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: membership-blog-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: membership-blog-api
+  template:
+    metadata:
+      labels:
+        app: membership-blog-api
+    spec:
+      containers:
+        - name: api
+          image: membership-blog-api:latest  # Kustomize will replace this image during build/deploy
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: membership-blog-app-secrets
+                  key: db_host
+            - name: DB_USER
+              value: "postgres"
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: membership-blog-config
+                  key: DB_NAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: membership-blog-app-secrets
+                  key: db_password
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: membership-blog-config
+                  key: ALLOWED_ORIGINS
+            - name: ORIGIN_VERIFY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: membership-blog-app-secrets
+                  key: origin_verify_secret
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: membership-blog-app-secrets
+                  key: jwt_secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

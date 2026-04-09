@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: dev
+
+images:
+- name: membership-blog-api
+  newName: 071308038382.dkr.ecr.ap-northeast-1.amazonaws.com/membership-blog-api
+  newTag: 22f391eebbe0ea68fcaa2ecc4d074227b3b17447
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+- literals:
+  - ALLOWED_ORIGINS=https://kamotaka.net
+  - DB_NAME="membership_db"
+  name: membership-blog-config
+
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 1
+  target:
+    kind: Deployment
+    name: membership-blog-api
+- patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: kamotaka.net
+  target:
+    kind: Ingress
+    name: membership-blog-ingress

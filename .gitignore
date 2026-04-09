@@ -1,0 +1,30 @@
+# Terraform provider cache and working directories (all environments)
+**/.terraform/
+
+# Terraform state files (contain sensitive data such as DB passwords and ARNs)
+*.tfstate
+*.tfstate.*
+
+# Terraform lock file
+.terraform.lock.hcl
+
+# Variable files (excluded by convention as they may contain sensitive values)
+*.tfvars
+
+# Temporary working files
+terraform/envs/dev/test.txt
+terraform/envs/dev/response.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+
+# Lambda deployment package (generated artifact)
+terraform/modules/lambda/lambda_function.zip
+
+# Claude Code local settings
+.claude/

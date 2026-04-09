@@ -1,0 +1,8 @@
+# Example terraform.tfvars
+# Copy this to terraform.tfvars and fill in your values
+
+# GitHub repository in 'owner/repo' format
+github_repo = "your-username/membership-site-on-eks"
+
+# Globally unique S3 bucket name for the React frontend
+frontend_bucket_name = "your-unique-frontend-bucket-name"
