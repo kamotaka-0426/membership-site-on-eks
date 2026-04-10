@@ -1,76 +1,89 @@
 #!/bin/bash
+set -euo pipefail
 
-# --- 設定 ---
+trap '
+    echo ""
+    echo "=========================================="
+    echo "❌ Script failed."
+    echo "   Check the AWS console for remaining resources."
+    echo "=========================================="
+' ERR
+
+# --- Configuration ---
 ARGOCD_NS="argocd"
-# スクリプトの場所を基準に相対パスで設定
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEV_DIR="$PROJECT_ROOT/terraform/envs/dev"
 BOOTSTRAP_DIR="$PROJECT_ROOT/terraform/bootstrap"
 
-echo "⚠️  警告: このスクリプトは全てのインフラを削除します。復元はできません。"
-echo "5秒後に開始します... (中止する場合は Ctrl+C)"
+echo "⚠️  Warning: This script will delete ALL infrastructure. This cannot be undone."
+echo "Starting in 5 seconds... (Press Ctrl+C to cancel)"
 sleep 5
 
-# --- [STEP 1] ArgoCD 管理リソースのクリーンアップ ---
-echo "=== [1/3] ArgoCD Application の削除と確認 ==="
+# --- [STEP 1] Clean up Argo CD managed resources ---
+echo "=== [1/3] Deleting Argo CD Applications ==="
 kubectl delete application --all -n $ARGOCD_NS --cascade=foreground --timeout=60s 2>/dev/null
 
-# 削除完了の判定ループ
-MAX_RETRIES=18 # 3分間待機
+MAX_RETRIES=18 # Wait up to 3 minutes
 RETRY_COUNT=0
 while : ; do
     STILL_EXISTS=$(kubectl get applications -n $ARGOCD_NS -o name 2>/dev/null)
     if [ -z "$STILL_EXISTS" ]; then
-        echo "✅ ArgoCD Application はすべて削除されました。"
+        echo "✅ All Argo CD Applications have been deleted."
         break
     fi
 
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo "⚠️  タイムアウト: ファイナライザーを強制解除して削除を強行します。"
+        echo "⚠️  Timeout: Force-removing finalizers to proceed with deletion."
         kubectl get applications -n $ARGOCD_NS -o name | xargs -I {} kubectl patch {} -n $ARGOCD_NS -p '{"metadata":{"finalizers":null}}' --type merge 2>/dev/null
         break
     fi
 
-    echo "待機中... 残存リソース: $(echo $STILL_EXISTS | wc -w) 件"
+    echo "Waiting... remaining resources: $(echo $STILL_EXISTS | wc -w)"
     RETRY_COUNT=$((RETRY_COUNT + 1))
     sleep 10
 done
 
-# --- [NEW] AWS ALB の削除完了を待機 ---
-echo "=== AWS Load Balancer (ALB) の削除反映を待っています... ==="
+# --- Wait for AWS ALB to be fully deleted ---
+echo "=== Waiting for AWS Load Balancer (ALB) to be removed... ==="
 while : ; do
-    # 'membership-blog' を含む名前のロードバランサーを検索
     ALB_ARN=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'membership-blog')].LoadBalancerArn" --output text --region ap-northeast-1 --profile dev-infra-01 2>/dev/null)
-    
+
     if [ -z "$ALB_ARN" ]; then
-        echo "✅ AWS Load Balancer は完全に削除されました。"
+        echo "✅ AWS Load Balancer has been fully deleted."
         break
     fi
-    
-    echo "待機中... ロードバランサーがまだ存在します: $ALB_ARN"
+
+    echo "Waiting... load balancer still exists: $ALB_ARN"
     sleep 20
 done
 
-# --- [STEP 2] メインインフラ (envs/dev) の削除 ---
-echo "=== [2/3] メインインフラ (envs/dev) を削除中... ==="
-if [ -d "$DEV_DIR" ]; then
-    cd "$DEV_DIR" || exit 1
-    # 削除を確実にするため一度 init
-    terraform init -input=false > /dev/null
-    terraform destroy -auto-approve
-else
-    echo "❌ エラー: $DEV_DIR が見つかりません。"
+# --- [STEP 2] Destroy main infrastructure (envs/dev) ---
+echo "=== [2/3] Destroying main infrastructure (envs/dev)... ==="
+if [ ! -d "$DEV_DIR" ]; then
+    echo "❌ Error: $DEV_DIR not found."
+    exit 1
 fi
+cd "$DEV_DIR"
+terraform init -input=false > /dev/null
+if ! terraform destroy -auto-approve; then
+    echo "❌ Failed to destroy envs/dev. Check the AWS console for remaining resources."
+    exit 1
+fi
+echo "✅ envs/dev has been destroyed."
 
-# --- [STEP 3] 土台 (Bootstrap) の削除 ---
-echo "=== [3/3] Bootstrap層 (S3/DynamoDB) を削除中... ==="
-if [ -d "$BOOTSTRAP_DIR" ]; then
-    cd "$BOOTSTRAP_DIR" || exit 1
-    terraform destroy -auto-approve
-else
-    echo "❌ エラー: $BOOTSTRAP_DIR が見つかりません。"
+# --- [STEP 3] Destroy bootstrap layer (S3/DynamoDB) ---
+echo "=== [3/3] Destroying bootstrap layer (S3/DynamoDB)... ==="
+if [ ! -d "$BOOTSTRAP_DIR" ]; then
+    echo "❌ Error: $BOOTSTRAP_DIR not found."
+    exit 1
 fi
+cd "$BOOTSTRAP_DIR"
+if ! terraform destroy -auto-approve; then
+    echo "❌ Failed to destroy bootstrap layer."
+    exit 1
+fi
+echo "✅ Bootstrap layer has been destroyed."
 
 echo "=========================================="
-echo "🎉 すべての削除プロセスが完了しました。"
+echo "🎉 All resources have been successfully deleted."
 echo "=========================================="

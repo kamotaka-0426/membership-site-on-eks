@@ -1,5 +1,7 @@
 # Membership Blog on EKS
 
+[日本語版 README はこちら](README.ja.md)
+
 A production-ready, secure, and scalable membership blog system built on AWS EKS (Kubernetes).
 All infrastructure layers are managed with Terraform, and continuous delivery is achieved through GitOps with Argo CD.
 
@@ -134,13 +136,43 @@ Push to main
 - AWS CLI configured with a profile named `dev-infra-01`
 - Terraform >= 1.9, kubectl, Helm 3
 
-### Step 1 — Bootstrap (S3 state backend + Route53)
+### Automated Setup (Recommended)
+
+Use the setup script to provision all infrastructure in the correct order:
+
+```bash
+# 1. Copy and fill in your Terraform variables
+cp terraform/envs/dev/terraform.tfvars.example terraform/envs/dev/terraform.tfvars
+
+# 2. Run the setup script
+./setup-all.sh
+```
+
+The script performs the following steps automatically:
+1. Checks that all required tools are installed (`terraform`, `kubectl`, `helm`, `aws`)
+2. Deploys the bootstrap layer (S3 state backend, DynamoDB lock table, Route53 hosted zone)
+3. Displays the Route53 name servers and pauses — register these at your domain registrar before continuing
+4. First `terraform apply`: provisions VPC, EKS, RDS, ECR, ACM, and Argo CD (excluding CloudFront)
+5. Waits for Argo CD to sync and the ALB to become available (up to 10 minutes)
+6. Second `terraform apply`: provisions CloudFront and the frontend S3 bucket
+7. Prints the values needed for GitHub Actions Secrets and the access URLs
+
+> **Note:** The script stops immediately on any error and displays a failure message. If it fails mid-way, check the AWS console for any partially created resources before re-running.
+
+### Manual Setup
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+#### Step 1 — Bootstrap (S3 state backend + Route53)
 ```bash
 cd terraform/bootstrap
 terraform init && terraform apply
 ```
 
-### Step 2 — Core Infrastructure (EKS, RDS, Argo CD)
+After applying, register the displayed Route53 name servers at your domain registrar.
+
+#### Step 2 — Core Infrastructure (EKS, RDS, Argo CD)
 ```bash
 cd terraform/envs/dev
 cp terraform.tfvars.example terraform.tfvars  # fill in your values
@@ -157,6 +189,8 @@ terraform apply -target=module.vpc \
 terraform apply
 ```
 
+</details>
+
 ### Step 3 — CI/CD Secrets (GitHub Actions)
 
 Set the following repository secrets in GitHub:
@@ -169,6 +203,8 @@ Set the following repository secrets in GitHub:
 | `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID for the frontend |
 | `VITE_API_URL` | Backend API URL (e.g. `https://api.example.com`) |
 
+When using `setup-all.sh`, most of these values are printed automatically at the end of the script.
+
 Push to `main` to trigger the pipeline.
 
 ## Teardown
@@ -177,7 +213,13 @@ Push to `main` to trigger the pipeline.
 ./destroy-all.sh
 ```
 
-The script deletes the Argo CD Application first (triggering ALB deletion), waits for the ALB to be fully removed, then runs `terraform destroy` in the correct order to avoid dependency errors.
+The script performs teardown in the correct order to avoid dependency errors:
+1. Deletes all Argo CD Applications (triggers ALB deletion via the Load Balancer Controller)
+2. Waits for the ALB to be fully removed from AWS
+3. Runs `terraform destroy` on the main infrastructure (`envs/dev`)
+4. Runs `terraform destroy` on the bootstrap layer
+
+> **Note:** The script stops immediately on any error and displays a failure message, so a successful "🎉 All resources have been successfully deleted." message confirms full teardown.
 
 ---
 
