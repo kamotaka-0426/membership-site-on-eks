@@ -220,6 +220,8 @@ The script performs teardown in the correct order to avoid dependency errors:
 4. Runs `terraform destroy` on the bootstrap layer
 
 > **Note:** The script stops immediately on any error and displays a failure message, so a successful "🎉 All resources have been successfully deleted." message confirms full teardown.
+>
+> **If the script fails mid-way** (some resources deleted, some remaining), simply re-run `./destroy-all.sh`. Terraform reads the state file to determine what still exists and will only attempt to destroy the remaining resources — it is safe to re-run.
 
 ---
 

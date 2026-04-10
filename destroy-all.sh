@@ -16,6 +16,8 @@ DEV_DIR="$PROJECT_ROOT/terraform/envs/dev"
 BOOTSTRAP_DIR="$PROJECT_ROOT/terraform/bootstrap"
 
 echo "⚠️  Warning: This script will delete ALL infrastructure. This cannot be undone."
+echo "Note: If the script fails mid-way, simply re-run it."
+echo "      Terraform will only target resources that still remain."
 echo "Starting in 5 seconds... (Press Ctrl+C to cancel)"
 sleep 5
 
@@ -67,6 +69,7 @@ cd "$DEV_DIR"
 terraform init -input=false > /dev/null
 if ! terraform destroy -auto-approve; then
     echo "❌ Failed to destroy envs/dev. Check the AWS console for remaining resources."
+    echo "   Re-running this script is safe — Terraform will only target resources that still remain."
     exit 1
 fi
 echo "✅ envs/dev has been destroyed."
@@ -80,6 +83,7 @@ fi
 cd "$BOOTSTRAP_DIR"
 if ! terraform destroy -auto-approve; then
     echo "❌ Failed to destroy bootstrap layer."
+    echo "   Re-running this script is safe — Terraform will only target resources that still remain."
     exit 1
 fi
 echo "✅ Bootstrap layer has been destroyed."
