@@ -15,6 +15,7 @@ DEV_DIR="$PROJECT_ROOT/terraform/envs/dev"
 BOOTSTRAP_DIR="$PROJECT_ROOT/terraform/bootstrap"
 TFVARS="$DEV_DIR/terraform.tfvars"
 TFVARS_EXAMPLE="$DEV_DIR/terraform.tfvars.example"
+DEV_MAIN_TF="$DEV_DIR/main.tf"
 
 echo "=========================================="
 echo "  Membership Blog on EKS - Setup Script"
@@ -50,7 +51,7 @@ sleep 5
 
 # --- [STEP 1] Bootstrap (S3 backend + Route53) ---
 echo ""
-echo "=== [1/3] Deploying bootstrap layer (S3/DynamoDB/Route53)... ==="
+echo "=== [1/4] Deploying bootstrap layer (S3/DynamoDB/Route53)... ==="
 if [ ! -d "$BOOTSTRAP_DIR" ]; then
     echo "❌ Error: $BOOTSTRAP_DIR not found."
     exit 1
@@ -62,6 +63,17 @@ if ! terraform apply -auto-approve; then
     exit 1
 fi
 echo "✅ Bootstrap layer deployed successfully."
+
+# --- [STEP 1b] Auto-update backend bucket name in envs/dev/main.tf ---
+echo ""
+echo "=== Updating backend config with the new S3 state bucket name... ==="
+BUCKET_NAME=$(terraform -chdir="$BOOTSTRAP_DIR" output -raw terraform_state_bucket_name)
+echo "  State bucket: $BUCKET_NAME"
+
+# Replace the bucket = "..." line inside the backend "s3" block
+sed -i "s|^\( *\)bucket *=.*\".*tfstate.*\"|\1bucket         = \"$BUCKET_NAME\"|" "$DEV_MAIN_TF"
+
+echo "✅ $DEV_MAIN_TF backend bucket updated to: $BUCKET_NAME"
 
 # --- NS record instructions ---
 echo ""
@@ -88,14 +100,14 @@ read -r
 
 # --- [STEP 2] First apply: EKS + Argo CD (excluding CloudFront) ---
 echo ""
-echo "=== [2/3] First apply: core infrastructure (EKS / RDS / Argo CD) ==="
+echo "=== [2/4] First apply: core infrastructure (EKS / RDS / Argo CD) ==="
 echo "  Note: CloudFront will be provisioned in the second apply once the ALB hostname is available."
 if [ ! -d "$DEV_DIR" ]; then
     echo "❌ Error: $DEV_DIR not found."
     exit 1
 fi
 cd "$DEV_DIR"
-terraform init -input=false
+terraform init -input=false -reconfigure
 if ! terraform apply -auto-approve \
     -target=module.vpc \
     -target=module.eks \
@@ -112,9 +124,9 @@ if ! terraform apply -auto-approve \
 fi
 echo "✅ First apply complete. Waiting for Argo CD to create the Ingress and ALB..."
 
-# --- Wait for ALB to become available ---
+# --- [STEP 3] Wait for ALB to become available ---
 echo ""
-echo "=== Waiting for ALB to become available (up to 10 minutes) ==="
+echo "=== [3/4] Waiting for ALB to become available (up to 10 minutes) ==="
 MAX_RETRIES=30  # 20s × 30 = 10 minutes
 RETRY_COUNT=0
 while : ; do
@@ -137,9 +149,9 @@ while : ; do
     sleep 20
 done
 
-# --- [STEP 3] Second apply: CloudFront + Frontend ---
+# --- [STEP 4] Second apply: CloudFront + Frontend ---
 echo ""
-echo "=== [3/3] Second apply: CloudFront and Frontend ==="
+echo "=== [4/4] Second apply: CloudFront and Frontend ==="
 cd "$DEV_DIR"
 if ! terraform apply -auto-approve; then
     echo "❌ Second apply failed."
@@ -161,6 +173,9 @@ terraform -chdir="$DEV_DIR" output frontend_url             | awk '{print "VITE_
 echo ""
 echo "S3_BUCKET_NAME and CLOUDFRONT_DISTRIBUTION_ID can be found in the"
 echo "AWS console or via 'terraform output'."
+echo ""
+echo "--- Terraform State Bucket ---"
+echo "  Bucket: $BUCKET_NAME  (already written to $DEV_MAIN_TF)"
 echo ""
 echo "--- Access URLs ---"
 terraform -chdir="$DEV_DIR" output frontend_url | awk '{print "Frontend : " $0}'

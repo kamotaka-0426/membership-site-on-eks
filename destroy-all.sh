@@ -59,8 +59,26 @@ while : ; do
     sleep 20
 done
 
-# --- [STEP 2] Destroy main infrastructure (envs/dev) ---
-echo "=== [2/3] Destroying main infrastructure (envs/dev)... ==="
+# --- [STEP 2] Clean up ECR images ---
+echo "=== [2/4] Cleaning up ECR images... ==="
+ECR_REPO=$(terraform -chdir="$DEV_DIR" output -raw ecr_repository_name 2>/dev/null || echo "")
+if [ -n "$ECR_REPO" ]; then
+    IMAGE_IDS=$(aws ecr list-images --repository-name "$ECR_REPO" \
+        --region ap-northeast-1 --profile dev-infra-01 \
+        --query 'imageIds' --output json 2>/dev/null || echo "[]")
+    if [ "$IMAGE_IDS" != "[]" ] && [ "$IMAGE_IDS" != "" ]; then
+        aws ecr batch-delete-image --repository-name "$ECR_REPO" \
+            --image-ids "$IMAGE_IDS" \
+            --region ap-northeast-1 --profile dev-infra-01 > /dev/null 2>&1 || true
+        echo "  Deleted all images from ECR: $ECR_REPO"
+    else
+        echo "  No images found in ECR: $ECR_REPO"
+    fi
+fi
+echo "✅ ECR cleanup complete."
+
+# --- [STEP 3] Destroy main infrastructure (envs/dev) ---
+echo "=== [3/4] Destroying main infrastructure (envs/dev)... ==="
 if [ ! -d "$DEV_DIR" ]; then
     echo "❌ Error: $DEV_DIR not found."
     exit 1
@@ -74,8 +92,8 @@ if ! terraform destroy -auto-approve; then
 fi
 echo "✅ envs/dev has been destroyed."
 
-# --- [STEP 3] Destroy bootstrap layer (S3/DynamoDB) ---
-echo "=== [3/3] Destroying bootstrap layer (S3/DynamoDB)... ==="
+# --- [STEP 4] Destroy bootstrap layer (S3/DynamoDB) ---
+echo "=== [4/4] Destroying bootstrap layer (S3/DynamoDB)... ==="
 if [ ! -d "$BOOTSTRAP_DIR" ]; then
     echo "❌ Error: $BOOTSTRAP_DIR not found."
     exit 1

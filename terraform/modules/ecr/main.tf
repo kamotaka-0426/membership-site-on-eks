@@ -2,6 +2,7 @@
 resource "aws_ecr_repository" "app" {
   name                 = "membership-blog-api"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true # scan for vulnerabilities on every push
@@ -41,4 +42,8 @@ resource "aws_ecr_lifecycle_policy" "app" {
 
 output "repository_url" {
   value = aws_ecr_repository.app.repository_url
+}
+
+output "repository_name" {
+  value = aws_ecr_repository.app.name
 }
