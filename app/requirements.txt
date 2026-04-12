@@ -5,6 +5,6 @@ psycopg2-binary
 pydantic
 pydantic-settings
 python-jose[cryptography]
-bcrypt  # これだけあれば十分です
+bcrypt
 email-validator
 python-multipart

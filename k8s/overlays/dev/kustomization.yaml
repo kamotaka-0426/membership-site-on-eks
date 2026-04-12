@@ -17,7 +17,7 @@ generatorOptions:
 configMapGenerator:
 - literals:
   - ALLOWED_ORIGINS=https://kamotaka.net
-  - DB_NAME="membership_db"
+  - DB_NAME=membership_db
   name: membership-blog-config
 
 patches:
